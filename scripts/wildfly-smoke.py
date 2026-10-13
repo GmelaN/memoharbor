@@ -16,6 +16,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--base-url", default="http://127.0.0.1:8080/memoharbor")
 parser.add_argument("--username", required=True)
 parser.add_argument("--existing", action="store_true", help="Verify persistence after redeployment, then delete the memo")
+parser.add_argument("--backend", choices=["SQLite", "MariaDB"])
 args = parser.parse_args()
 client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()), NoRedirect())
 
@@ -36,7 +37,11 @@ def token(html):
     return re.search(r"name='csrf' value='([^']+)'", html).group(1)
 
 
-assert '"database":"UP"' in request("/health")
+health = request("/health")
+assert '"database":"UP"' in health
+if args.backend:
+    assert '"backend":"' + args.backend + '"' in health
+assert '"status":"UP"' in request("/live")
 request("/", 303)
 request("/create", 401, {"title": "unauthorized", "detail": "test"})
 csrf = token(request("/login"))

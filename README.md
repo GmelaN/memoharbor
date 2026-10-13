@@ -18,6 +18,8 @@ mvn --batch-mode verify
 
 ## 배포
 
+OKD `4.22.0-okd-scos.9`의 WildFly 컨테이너 자동 배포(MariaDB Secret, GHCR, 사설망 GitHub runner)는 [openshift/README.md](openshift/README.md)를 참고하십시오.
+
 WildFly를 JDK 17 이상으로 시작한 뒤 관리 CLI로 WAR를 배포합니다. WAR 압축 해제 설정은 필요하지 않습니다.
 
 ```sh
@@ -28,6 +30,7 @@ Windows에서는 `bin/jboss-cli.bat`을 사용합니다. `WEB-INF/jboss-web.xml`
 
 - 화면: `http://WILDFLY:8080/memoharbor/`
 - DB 포함 상태 점검: `GET /memoharbor/health`
+- DB와 독립된 생존 점검: `GET /memoharbor/live`
 - 등록: `POST /memoharbor/create` (`title`, `detail` 폼 필드)
 - 삭제: `POST /memoharbor/delete` (`id` 폼 필드)
 - 인스턴스 표시: WildFly 시작 전에 `APM_INSTANCE_NAME=wildfly-1` 등으로 환경변수 설정. 미설정 시 `jboss.node.name`을 사용합니다.

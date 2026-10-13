@@ -1,0 +1,127 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: memoharbor
+  namespace: memoharbor
+imagePullSecrets:
+  - name: ghcr-pull
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memoharbor
+  namespace: memoharbor
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  progressDeadlineSeconds: 600
+  selector:
+    matchLabels:
+      app: memoharbor
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: memoharbor
+    spec:
+      serviceAccountName: memoharbor
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: memoharbor
+          # Bootstrap only. Actions subsequently deploys an immutable image digest.
+          image: ghcr.io/gmelan/memoharbor:main
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: JAVA_OPTS
+              value: "-Xms128m -Xmx512m -Djava.net.preferIPv4Stack=true -Dmemoharbor.env=/etc/memoharbor/.env"
+            - name: APM_INSTANCE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+          startupProbe:
+            httpGet:
+              path: /memoharbor/live
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /memoharbor/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 20
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /memoharbor/live
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: database-config
+              mountPath: /etc/memoharbor
+              readOnly: true
+      volumes:
+        - name: database-config
+          secret:
+            secretName: memoharbor-db
+            defaultMode: 0444
+            items:
+              - key: .env
+                path: .env
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: memoharbor
+  namespace: memoharbor
+spec:
+  selector:
+    app: memoharbor
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: memoharbor
+  namespace: memoharbor
+  annotations:
+    haproxy.router.openshift.io/disable_cookies: "false"
+spec:
+  path: /memoharbor
+  to:
+    kind: Service
+    name: memoharbor
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

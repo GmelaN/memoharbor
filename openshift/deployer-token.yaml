@@ -1,0 +1,9 @@
+# Apply once by an administrator; the generated token must never enter Git.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-deployer-token
+  namespace: memoharbor
+  annotations:
+    kubernetes.io/service-account.name: github-deployer
+type: kubernetes.io/service-account-token

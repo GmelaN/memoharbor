@@ -58,6 +58,11 @@ public class AppServlet extends HttpServlet {
     @Override protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
         begin(response);
         String path = request.getServletPath();
+        if ("/live".equals(path)) {
+            response.setContentType("application/json");
+            response.getWriter().write("{\"app\":\"MemoHarbor\",\"status\":\"UP\"}");
+            return;
+        }
         if ("/health".equals(path)) {
             response.setContentType("application/json");
             try (Connection connection = connect(); Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery("SELECT 1")) {

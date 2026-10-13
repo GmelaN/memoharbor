@@ -4,6 +4,7 @@ on:
     branches: [main]
     tags: ['v*']
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -46,6 +47,125 @@ jobs:
         with:
           name: memoharbor-war
           path: target/memoharbor.war
+  image:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: memoharbor-image-main
+      cancel-in-progress: false
+    outputs:
+      reference: ${{ steps.publish.outputs.reference }}
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+          MARIADB_DATABASE: apm_test
+          MARIADB_USER: apm_test
+          MARIADB_PASSWORD: ci-test-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      MARIADB_TEST_URL: jdbc:mariadb://127.0.0.1:3306/apm_test
+      MARIADB_TEST_USER: apm_test
+      MARIADB_TEST_PASSWORD: ci-test-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: memoharbor-war
+          path: target
+      - name: Build image
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "IMAGE=$image" >> "$GITHUB_ENV"
+          docker build --label "org.opencontainers.image.revision=$GITHUB_SHA" --tag "$image:sha-$GITHUB_SHA" --tag "$image:main" .
+      - name: Verify arbitrary UID and MariaDB in the actual container
+        run: bash scripts/verify-container.sh "$IMAGE:sha-$GITHUB_SHA"
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish verified image
+        id: publish
+        shell: bash
+        run: |
+          docker push "$IMAGE:sha-$GITHUB_SHA"
+          docker push "$IMAGE:main"
+          reference="$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:sha-$GITHUB_SHA")"
+          echo "reference=$reference" >> "$GITHUB_OUTPUT"
+  deploy:
+    if: github.ref == 'refs/heads/main' && vars.OPENSHIFT_DEPLOY_ENABLED == 'true'
+    needs: image
+    runs-on: [self-hosted, linux, x64, okd-memoharbor]
+    environment: okd
+    permissions:
+      contents: read
+    concurrency:
+      group: memoharbor-okd-deploy
+      cancel-in-progress: false
+    env:
+      IMAGE_REFERENCE: ${{ needs.image.outputs.reference }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use an isolated Kubernetes configuration
+        shell: bash
+        run: echo "KUBECONFIG=$RUNNER_TEMP/memoharbor-kubeconfig" >> "$GITHUB_ENV"
+      - name: Skip superseded commits
+        id: current
+        shell: bash
+        run: |
+          git fetch origin main
+          if [[ "$(git rev-parse origin/main)" == "$GITHUB_SHA" ]]; then
+            echo 'deploy=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'A newer main commit exists; skip this deployment.'
+          fi
+      - name: Authenticate to private OKD
+        if: steps.current.outputs.deploy == 'true'
+        shell: bash
+        env:
+          OPENSHIFT_SERVER: ${{ secrets.OPENSHIFT_SERVER }}
+          OPENSHIFT_TOKEN: ${{ secrets.OPENSHIFT_TOKEN }}
+          OPENSHIFT_CA_CERT: ${{ secrets.OPENSHIFT_CA_CERT }}
+        run: |
+          set -euo pipefail
+          command -v oc >/dev/null
+          : "${OPENSHIFT_SERVER:?Set OPENSHIFT_SERVER in the okd environment}"
+          : "${OPENSHIFT_TOKEN:?Set OPENSHIFT_TOKEN in the okd environment}"
+          umask 077
+          if [[ -n "$OPENSHIFT_CA_CERT" ]]; then
+            printf '%s\n' "$OPENSHIFT_CA_CERT" > "$RUNNER_TEMP/memoharbor-ca.crt"
+            oc config set-cluster okd --server="$OPENSHIFT_SERVER" --certificate-authority="$RUNNER_TEMP/memoharbor-ca.crt" --embed-certs=true
+          else
+            oc config set-cluster okd --server="$OPENSHIFT_SERVER"
+          fi
+          oc config set-credentials github-deployer --token="$OPENSHIFT_TOKEN"
+          oc config set-context memoharbor --cluster=okd --user=github-deployer --namespace=memoharbor
+          oc config use-context memoharbor
+      - name: Update image and wait for readiness
+        if: steps.current.outputs.deploy == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          oc -n memoharbor set image deployment/memoharbor memoharbor="$IMAGE_REFERENCE"
+          oc -n memoharbor annotate deployment/memoharbor kubernetes.io/change-cause="GitHub commit $GITHUB_SHA" --overwrite
+          oc -n memoharbor rollout status deployment/memoharbor --timeout=600s
+      - name: Remove temporary credentials
+        if: always()
+        shell: bash
+        run: rm -f "$KUBECONFIG" "$RUNNER_TEMP/memoharbor-ca.crt"
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build

@@ -69,6 +69,7 @@ class AppIntegrationTest {
             guest.call("POST", "/create", "title=bad&detail=TODO", 401);
             guest.call("POST", "/delete", "id=1", 401);
             assertTrue(guest.call("GET", "/health", null, 200).contains("\"database\":\"UP\""));
+            assertTrue(guest.call("GET", "/live", null, 200).contains("\"status\":\"UP\""));
             guest.call("GET", "/login", null, 200);
             guest.call("POST", "/register", "username=alice&password=correct-password-123", 403);
             alice.account("/register", "alice");
