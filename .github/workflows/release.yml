@@ -36,6 +36,12 @@ jobs:
           cache: maven
       - name: Verify and package
         run: mvn --batch-mode --no-transfer-progress verify
+      - name: Verify real WildFly deployment and persistence
+        shell: bash
+        run: |
+          curl --fail --location --retry 3 https://github.com/wildfly/wildfly/releases/download/27.0.1.Final/wildfly-27.0.1.Final.tar.gz -o "$RUNNER_TEMP/wildfly.tar.gz"
+          tar -xzf "$RUNNER_TEMP/wildfly.tar.gz" -C "$RUNNER_TEMP"
+          JBOSS_HOME="$RUNNER_TEMP/wildfly-27.0.1.Final" bash scripts/verify-wildfly.sh
       - uses: actions/upload-artifact@v4
         with:
           name: memoharbor-war
@@ -59,4 +65,4 @@ jobs:
         run: |
           cd dist
           sha256sum memoharbor.war > SHA256SUMS
-          gh release create "$TAG" memoharbor.war SHA256SUMS --verify-tag --title "MemoHarbor $TAG" --notes "Independent Tomcat 9 webapp. Java 8+ runtime. Configure an external project-root .env for shared MariaDB; without .env, local SQLite is used."
+          gh release create "$TAG" memoharbor.war SHA256SUMS --verify-tag --title "MemoHarbor $TAG" --notes "Independent Jakarta Servlet 6 webapp for WildFly 27+ / Java 17+. Configure an external .env for shared MariaDB; without .env, persistent local SQLite is used."

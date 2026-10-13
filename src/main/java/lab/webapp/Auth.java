@@ -1,6 +1,6 @@
 package lab.webapp;
 
-import javax.servlet.http.*;
+import jakarta.servlet.http.*;
 import java.io.IOException;
 import java.sql.*;
 import java.security.*;

@@ -1,10 +1,10 @@
 package lab.webapp;
 
-import javax.servlet.ServletException;
-import javax.servlet.annotation.WebServlet;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.annotation.WebServlet;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Paths;
@@ -19,12 +19,12 @@ public class AppServlet extends HttpServlet {
     @Override public void init() throws ServletException {
         try {
             String directory = getServletContext().getRealPath("/");
-            if (directory == null) throw new ServletException("Tomcat unpackWARs=true is required");
             String envFile = System.getProperty("memoharbor.env", getServletConfig().getInitParameter("envFile"));
-            database = DatabaseConfig.load(Paths.get(directory), envFile);
+            database = DatabaseConfig.load(directory == null ? null : Paths.get(directory), envFile,
+                System.getProperty("memoharbor.dataDir"), System.getProperty("jboss.server.data.dir"));
             String configured = System.getenv("APM_INSTANCE_NAME");
             instance = configured == null || configured.trim().isEmpty()
-                ? System.getProperty("catalina.base", "local") : configured;
+                ? System.getProperty("jboss.node.name", System.getProperty("catalina.base", "local")) : configured;
             Class.forName(database.maria ? "org.mariadb.jdbc.Driver" : "org.sqlite.JDBC");
             try (Connection connection = connect(); Statement statement = connection.createStatement()) {
                 statement.executeUpdate(database.maria

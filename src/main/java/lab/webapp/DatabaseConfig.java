@@ -15,11 +15,20 @@ final class DatabaseConfig {
     }
 
     static DatabaseConfig load(Path webRoot, String explicitEnv) throws IOException {
+        return load(webRoot, explicitEnv, null, null);
+    }
+
+    static DatabaseConfig load(Path webRoot, String explicitEnv, String dataDir, String serverDataDir) throws IOException {
         boolean explicit = explicitEnv != null && !explicitEnv.trim().isEmpty();
-        Path env = explicit ? Paths.get(explicitEnv).toAbsolutePath() : webRoot.resolve(".env");
-        if (!Files.exists(env)) {
+        Path env = explicit ? Paths.get(explicitEnv).toAbsolutePath() : (webRoot == null ? null : webRoot.resolve(".env"));
+        if (env == null || !Files.exists(env)) {
             if (explicit) throw new IOException("Configured .env file does not exist");
-            Path db = webRoot.resolve("WEB-INF/db"); Files.createDirectories(db);
+            Path db;
+            if (dataDir != null && !dataDir.trim().isEmpty()) db = Paths.get(dataDir).toAbsolutePath();
+            else if (serverDataDir != null && !serverDataDir.trim().isEmpty()) db = Paths.get(serverDataDir).resolve("memoharbor");
+            else if (webRoot != null) db = webRoot.resolve("WEB-INF/db");
+            else throw new IOException("SQLite requires memoharbor.dataDir or jboss.server.data.dir when no real web root is available");
+            Files.createDirectories(db);
             return new DatabaseConfig("jdbc:sqlite:" + db.resolve("memoharbor.sqlite").toAbsolutePath(), "", "", false);
         }
         Map<String, String> values = new HashMap<>(); int number = 0;

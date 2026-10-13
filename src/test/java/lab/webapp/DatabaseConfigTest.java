@@ -22,6 +22,26 @@ class DatabaseConfigTest {
         assertFalse(DatabaseConfig.load(root, null).maria);
         assertThrows(IOException.class, () -> DatabaseConfig.load(root, root.resolve("missing.env").toString()));
     }
+    @Test void packedWarUsesPersistentWildFlyDataDirectory() throws Exception {
+        Path serverData = root.resolve("server-data");
+        DatabaseConfig c = DatabaseConfig.load(null, null, null, serverData.toString());
+        assertFalse(c.maria);
+        assertEquals("jdbc:sqlite:" + serverData.resolve("memoharbor/memoharbor.sqlite").toAbsolutePath(), c.url);
+        assertTrue(Files.isDirectory(serverData.resolve("memoharbor")));
+    }
+    @Test void explicitDataDirectoryOverridesWildFlyAndExplodedWar() throws Exception {
+        Path data = root.resolve("external-data");
+        DatabaseConfig c = DatabaseConfig.load(root, null, data.toString(), root.resolve("server-data").toString());
+        assertEquals("jdbc:sqlite:" + data.resolve("memoharbor.sqlite").toAbsolutePath(), c.url);
+        assertFalse(Files.exists(root.resolve("WEB-INF/db")));
+        assertFalse(Files.exists(root.resolve("server-data")));
+    }
+    @Test void packedWarCanUseExternalMariaDbConfiguration() throws Exception {
+        env("DB_URL=jdbc:mariadb://db:3306/test\nDB_USER=user\nDB_PASSWORD=secret\n");
+        assertTrue(DatabaseConfig.load(null, root.resolve(".env").toString(), null, null).maria);
+        assertThrows(IOException.class, () -> DatabaseConfig.load(null, root.resolve("missing.env").toString(), null, root.toString()));
+        assertThrows(IOException.class, () -> DatabaseConfig.load(null, null, null, null));
+    }
     @Test void invalidConfigNeverSilentlyFallsBackOrPrintsValues() throws Exception {
         env("DB_URL=jdbc:mariadb://db:3306/test\nDB_USER=user\n");
         assertThrows(IOException.class, () -> DatabaseConfig.load(root, null));
