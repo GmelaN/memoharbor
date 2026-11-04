@@ -62,4 +62,4 @@ if args.existing:
     assert "WildFly &lt;memo&gt; 한글" not in request("/")
 request("/logout", 303, {"csrf": csrf})
 request("/", 303)
-print("WildFly HTTP smoke passed" + (" (redeploy persistence and delete)" if args.existing else " (register and create)"))
+print("HTTP smoke passed" + (" (redeploy persistence and delete)" if args.existing else " (register and create)"))

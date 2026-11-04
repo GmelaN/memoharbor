@@ -5,7 +5,7 @@
 
 ## 환경 및 빌드
 
-- 실행 기준: **WildFly 27 이상 / Java 17 이상** (Jakarta EE 10, `jakarta.servlet` 6.0). Tomcat 10.1에서도 실행할 수 있습니다. Tomcat 9 및 WildFly 26 이하에는 이 WAR를 배포할 수 없습니다.
+- 실행 기준: **WildFly 27 이상 / Java 17 이상** (Jakarta EE 10, `jakarta.servlet` 6.0). **Tomcat 10.1 및 Tomcat 11**(Jakarta EE 11, Servlet 6.1)에서도 실행할 수 있습니다. Tomcat 9 및 WildFly 26 이하에는 이 WAR를 배포할 수 없습니다.
 - 빌드: JDK 17 이상, Maven 3.9 이상.
 - 프레임워크 없이 Servlet + JDBC 사용. APM 에이전트는 WAR에 포함하지 않습니다.
 
@@ -13,7 +13,7 @@
 mvn --batch-mode verify
 ```
 
-결과: `target/memoharbor.war`. 테스트는 임시 Tomcat 10.1에서 HTTP 등록·조회·삭제, SQLite 재시작 후 유지,
+결과: `target/memoharbor.war`. 테스트는 임시 Tomcat 11(embedded)에서 HTTP 등록·조회·삭제, SQLite 재시작 후 유지,
 입력 검증, HTML 이스케이프, DB 파일 HTTP 접근 차단을 확인합니다.
 
 ## 배포
@@ -36,6 +36,17 @@ Windows에서는 `bin/jboss-cli.bat`을 사용합니다. `WEB-INF/jboss-web.xml`
 - 인스턴스 표시: WildFly 시작 전에 `APM_INSTANCE_NAME=wildfly-1` 등으로 환경변수 설정. 미설정 시 `jboss.node.name`을 사용합니다.
 - JDBC/애플리케이션 오류는 서버 로그에 기록합니다. 응답에는 `X-Request-ID`를 포함합니다.
 
+### Tomcat 10.1 / 11
+
+JDK 17 이상으로 실행하는 Tomcat 11(또는 10.1)에서는 WAR를 `$CATALINA_HOME/webapps/memoharbor.war`로 복사합니다. 파일 이름이 컨텍스트 경로 `/memoharbor`가 됩니다.
+Tomcat은 WAR를 `webapps/memoharbor/`에 풀고 재배포 시 삭제하므로, SQLite 데이터를 유지하려면 `bin/setenv.sh`에 외부 저장 디렉터리를 지정하십시오.
+
+```sh
+CATALINA_OPTS="$CATALINA_OPTS -Dmemoharbor.dataDir=/var/lib/memoharbor -Dmemoharbor.env=/opt/projects/memoharbor/.env"
+```
+
+`-Dmemoharbor.env`는 MariaDB를 쓸 때만 지정합니다. Windows는 `bin/setenv.bat`에 `set "CATALINA_OPTS=%CATALINA_OPTS% -Dmemoharbor.dataDir=C:/memoharbor-data"`를 추가합니다.
+
 ## SQLite
 
 WildFly 첫 실행 시 `${jboss.server.data.dir}/memoharbor/memoharbor.sqlite`가 자동 생성됩니다.
@@ -45,18 +56,24 @@ standalone 모드 기본 위치는 `$JBOSS_HOME/standalone/data/memoharbor/memoh
 SQLite 모드에서는 각 서버 인스턴스가 자기 DB를 사용합니다. MariaDB 설정은 아래를 참고하십시오. 한 WAS에 배포된 웹앱은 JVM 자원을 공유합니다.
 신규 계정은 빈 목록으로 시작합니다. 기존 소유자 없는 데이터는 보존하지만 로그인 사용자에게 노출하지 않습니다. 화면은 최근 100건을 표시합니다.
 기존 Tomcat의 SQLite 데이터를 이전하려면 서버를 중지하고 `WEB-INF/db/memoharbor.sqlite`와 관련 SQLite 파일을 새 저장 디렉터리에 복사한 뒤 시작하십시오. 자동 이전은 수행하지 않습니다.
-Tomcat 10.1에서는 `memoharbor.dataDir` 지정이 권장됩니다. 미지정 시 기존 `WEB-INF/db`를 사용하므로 압축 해제된 웹앱이 필요하고 재배포 전에 백업해야 합니다.
+Tomcat 10.1/11에서는 `memoharbor.dataDir` 지정이 권장됩니다. 미지정 시 기존 `WEB-INF/db`를 사용하므로 압축 해제된 웹앱이 필요하고 재배포 전에 백업해야 합니다.
 
 ## GitHub Release
 
 `main`/PR에서 빌드·테스트를 수행하고 WAR를 Actions artifact로 보관합니다.
 `v*` 태그를 푸시하면 검증을 통과한 WAR와 `SHA256SUMS`를 GitHub Release에 첨부합니다.
-CI는 실제 WildFly 27.0.1에 WAR를 배포하여 로그인·등록·삭제, CSRF, DB/설정 파일 접근 차단 및 WAR 재배포 후 SQLite 데이터 유지를 확인합니다.
+CI는 실제 WildFly 27.0.1과 Tomcat 11.0.27에 WAR를 배포하여 로그인·등록·삭제, CSRF, DB/설정 파일 접근 차단 및 WAR 재배포 후 SQLite 데이터 유지를 확인합니다.
 
 빌드 후 전용 로컬 WildFly 설치에서도 검증할 수 있습니다 (기본 HTTP/관리 포트 사용, Python 3 필요).
 
 ```sh
 JBOSS_HOME=/opt/wildfly-27.0.1.Final bash scripts/verify-wildfly.sh
+```
+
+Tomcat 11 전용 설치에서는 다음으로 검증합니다 (HTTP 8081 사용, `conf/server.xml`의 포트를 변경함).
+
+```sh
+CATALINA_HOME=/opt/apache-tomcat-11.0.27 bash scripts/verify-tomcat.sh
 ```
 
 ```sh
@@ -119,7 +136,7 @@ WAS 두 대에서 접속하려면 각 주소에 계정을 생성하거나 환경
 
 ### MariaDB 검증
 
-GitHub Actions는 실제 MariaDB 11.4 서비스를 띄워 두 임시 Tomcat 10.1 인스턴스 간 데이터 공유와 재시작을 검증합니다. WildFly HTTP 배포 검증은 SQLite를 사용합니다.
+GitHub Actions는 실제 MariaDB 11.4 서비스를 띄워 두 임시 Tomcat 11 인스턴스 간 데이터 공유와 재시작을 검증합니다. WildFly HTTP 배포 검증은 SQLite를 사용합니다.
 로컬에서 테스트할 때는 전용 테스트 DB의 `MARIADB_TEST_URL`, `MARIADB_TEST_USER`,
 `MARIADB_TEST_PASSWORD` 환경변수를 설정하고 `mvn verify`를 실행하십시오.
 미설정 시 MariaDB 통합 테스트는 건너뛰며 SQLite·설정 파서 테스트는 실행합니다.
