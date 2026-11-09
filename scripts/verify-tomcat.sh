@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Run against a dedicated local Tomcat 10.1/11 installation; uses HTTP port ${TOMCAT_PORT:-8081}.
+# Run against a dedicated local Tomcat installation; uses HTTP port ${TOMCAT_PORT:-8081}.
+# Tomcat 10.1/11: target/memoharbor.war (default). Tomcat 9: WAR=target/tomcat9/memoharbor.war.
 set -euo pipefail
-: "${CATALINA_HOME:?Set CATALINA_HOME to a dedicated Tomcat 10.1+ installation}"
+: "${CATALINA_HOME:?Set CATALINA_HOME to a dedicated Tomcat installation}"
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
-war="$project_dir/target/memoharbor.war"
+war="${WAR:-$project_dir/target/memoharbor.war}"
 port="${TOMCAT_PORT:-8081}"
 base_url="http://127.0.0.1:$port/memoharbor"
 test_user="tc_$(date +%s)"

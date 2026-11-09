@@ -53,10 +53,26 @@ jobs:
           echo "$(cut -d' ' -f1 "$RUNNER_TEMP/tomcat.tar.gz.sha512")  $RUNNER_TEMP/tomcat.tar.gz" | sha512sum --check
           tar -xzf "$RUNNER_TEMP/tomcat.tar.gz" -C "$RUNNER_TEMP"
           CATALINA_HOME="$RUNNER_TEMP/apache-tomcat-$TOMCAT_VERSION" bash scripts/verify-tomcat.sh
+      - name: Package javax WAR for Tomcat 9
+        run: mvn --batch-mode --no-transfer-progress -Ptomcat9 verify
+      - name: Verify real Tomcat 9 deployment and persistence
+        shell: bash
+        env:
+          TOMCAT_VERSION: 9.0.123
+        run: |
+          curl --fail --location --retry 3 "https://archive.apache.org/dist/tomcat/tomcat-9/v$TOMCAT_VERSION/bin/apache-tomcat-$TOMCAT_VERSION.tar.gz" -o "$RUNNER_TEMP/tomcat9.tar.gz"
+          curl --fail --location --retry 3 "https://archive.apache.org/dist/tomcat/tomcat-9/v$TOMCAT_VERSION/bin/apache-tomcat-$TOMCAT_VERSION.tar.gz.sha512" -o "$RUNNER_TEMP/tomcat9.tar.gz.sha512"
+          echo "$(cut -d' ' -f1 "$RUNNER_TEMP/tomcat9.tar.gz.sha512")  $RUNNER_TEMP/tomcat9.tar.gz" | sha512sum --check
+          tar -xzf "$RUNNER_TEMP/tomcat9.tar.gz" -C "$RUNNER_TEMP"
+          CATALINA_HOME="$RUNNER_TEMP/apache-tomcat-$TOMCAT_VERSION" WAR="$PWD/target/tomcat9/memoharbor.war" bash scripts/verify-tomcat.sh
       - uses: actions/upload-artifact@v4
         with:
           name: memoharbor-war
           path: target/memoharbor.war
+      - uses: actions/upload-artifact@v4
+        with:
+          name: memoharbor-tomcat9-war
+          path: target/tomcat9/memoharbor.war
   image:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
@@ -187,12 +203,17 @@ jobs:
         with:
           name: memoharbor-war
           path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: memoharbor-tomcat9-war
+          path: tomcat9
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
+          mv tomcat9/memoharbor.war dist/memoharbor-tomcat9.war
           cd dist
-          sha256sum memoharbor.war > SHA256SUMS
-          gh release create "$TAG" memoharbor.war SHA256SUMS --verify-tag --title "MemoHarbor $TAG" --notes "Independent Jakarta Servlet 6 webapp for WildFly 27+ and Tomcat 10.1/11 / Java 17+. On Tomcat, set -Dmemoharbor.dataDir for persistent SQLite. Configure an external .env for shared MariaDB; without .env, persistent local SQLite is used."
+          sha256sum memoharbor.war memoharbor-tomcat9.war > SHA256SUMS
+          gh release create "$TAG" memoharbor.war memoharbor-tomcat9.war SHA256SUMS --verify-tag --title "MemoHarbor $TAG" --notes "memoharbor.war: Jakarta Servlet 6 for WildFly 27+ and Tomcat 10.1/11 (Java 17+). memoharbor-tomcat9.war: javax Servlet 4.0 build of the same source for Tomcat 9 (Java 11+); deploy it as webapps/memoharbor.war to keep the /memoharbor context path. On Tomcat, set -Dmemoharbor.dataDir for persistent SQLite. Configure an external .env for shared MariaDB; without .env, persistent local SQLite is used."
